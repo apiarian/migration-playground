@@ -18,4 +18,5 @@ type ThingService interface {
 	UpdateThing(id int, version int, name string, foo int) (*Thing, error)
 	GetThing(id int) (*Thing, error)
 	ListThings() ([]*Thing, error)
+	ThingStream() <-chan *Thing
 }

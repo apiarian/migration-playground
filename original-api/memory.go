@@ -14,6 +14,7 @@ type MemoryThings struct {
 	store  map[int]*Thing
 	nextId int
 	mux    *sync.Mutex
+	stream chan *Thing
 }
 
 func NewMemoryThings() *MemoryThings {
@@ -21,6 +22,7 @@ func NewMemoryThings() *MemoryThings {
 		store:  make(map[int]*Thing),
 		nextId: 0,
 		mux:    &sync.Mutex{},
+		stream: make(chan *Thing),
 	}
 }
 
@@ -63,6 +65,8 @@ func (mt *MemoryThings) CreateThing(name string, foo int) (*Thing, error) {
 	}
 	mt.store[t.ID] = t
 
+	go func(c chan<- *Thing) { c <- t }(mt.stream)
+
 	mt.nextId = mt.nextId + 1
 
 	return t, nil
@@ -94,6 +98,8 @@ func (mt *MemoryThings) UpdateThing(id int, version int, name string, foo int) (
 	t.Version = t.Version + 1
 	t.UpdatedOn = time.Now()
 
+	go func(c chan<- *Thing) { c <- t }(mt.stream)
+
 	return t, nil
 }
 
@@ -121,6 +127,14 @@ func (mt *MemoryThings) ListThings() ([]*Thing, error) {
 	sort.Slice(ts, func(i, j int) bool { return ts[i].ID < ts[j].ID })
 
 	return ts, nil
+}
+
+func (mt *MemoryThings) ThingStream() <-chan *Thing {
+	return mt.stream
+}
+
+func (mt *MemoryThings) Close() {
+	close(mt.stream)
 }
 
 var _ ThingService = &MemoryThings{}

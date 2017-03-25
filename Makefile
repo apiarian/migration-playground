@@ -1,5 +1,6 @@
 kafka_dir := $(HOME)/development/kafka
 confluent_dir := $(kafka_dir)/latest
+topic := things
 
 
 zookeeper: ## start the zookeeper for kafka. run this first
@@ -12,6 +13,10 @@ kafka: ## start kafka. run this after zookeeper is running
 
 registry: ## start the schema registry. run this after kafka is running
 	cd $(confluent_dir); ./bin/schema-registry-start ./etc/schema-registry/schema-registry.properties
+
+
+readtopic: ## read a topic from the beginning. set topic=name on the command line
+	cd $(confluent_dir); ./bin/kafka-simple-consumer-shell --topic $(topic) --broker-list 127.0.0.1:9092
 
 
 .PHONY: help
