@@ -71,3 +71,63 @@ Error responses have the following schema:
 Error responses have non-200 HTTP status codes.
 
 `application/json` in, `application/json` out.
+
+
+## Shiny API
+
+The Shiny API, found in the [shiny-api](./shiny-api/) directory, is a new
+stream-backed API. It handles `Thing` entities with list/get/create/update
+actions. It also handles command entities with get actions. Entities are kept in
+a kafka stream and cached locally as needed. The system is broken into two
+parts, the API itself [shiny-api/api](./shiny-api/api/) and the Updater tool
+[shiny-api/updater](./shiny-api/updater/). The API creates commands and watches
+for responses on a kafka topic, while the updater processes the business logic
+and deals with any data coordination that may be required with the Original API.
+
+### Running the Shiny API
+
+The API command can be launched by executing `go run shiny-api/api/*.go`. The
+Updater command can be launched by executing `go run shiny-api/updater/*.go`.
+
+See the respective `-help` output for command-line arguments.
+
+**NOTE:** Kafka needs to be available for the API to function.
+
+### Schema
+
+`Thing` entities have the following schema:
+
+```
+{
+	id: string (numeric)
+	name: string
+	foo: float
+	created_on: string(timestamp)
+	updated_on: string(timestamp)
+	version: string (numeric)
+}
+```
+
+The `name` and `foo` fields are required when creating `Things` with the `POST
+api/things/` endpoint or updated with the `POST api/things/:id` endpoint. The
+`version` field is also required when updating a `Thing`, and must match the
+current value of the `version`. The other fields are read-only and will be
+available at `GET api/things/` and `GET api/things/:id` for getting a single
+`Thing` and listing all the `Things`, respectively.
+
+**NOTE**: schema is similar and mappable (with slight loss in the `foo` field)
+to the Original API. Even though the `id` and the `version` fields have been
+turned into "opaque strings", they will need to be numeric for the duration of
+the multi-master dance of the two APIs.
+
+Error responses have the following schema:
+
+```
+{
+	error-message: string
+}
+```
+
+Error responses have non-200 HTTP status codes.
+
+`application/json` in, `application/json` out.
