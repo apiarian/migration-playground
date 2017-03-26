@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"encoding/base64"
@@ -100,7 +100,7 @@ func NewKafkaClient(brokers []string, topic string) (*KafkaClient, error) {
 		client:        client,
 		producer:      producer,
 		consumer:      consumer,
-		command_topic: command_topic,
+		command_topic: topic,
 	}, nil
 }
 

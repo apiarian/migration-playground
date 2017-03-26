@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/apiarian/migration-playground/shiny-api/common"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 )
@@ -21,7 +22,7 @@ type ThingView struct {
 	Version   string  `json:"version"`
 }
 
-func ViewThing(t *Thing) *ThingView {
+func ViewThing(t *common.Thing) *ThingView {
 	if t == nil {
 		return nil
 	}
@@ -55,7 +56,7 @@ func CodeOrDefault(err error, def int) int {
 	return def
 }
 
-func MakeListThingsHandlerFunc(ts ThingService) http.HandlerFunc {
+func MakeListThingsHandlerFunc(ts common.ThingService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t, err := ts.ListThings()
 		if err != nil {
@@ -67,7 +68,7 @@ func MakeListThingsHandlerFunc(ts ThingService) http.HandlerFunc {
 	}
 }
 
-func MakeGetThingHandlerFunc(ts ThingService) http.HandlerFunc {
+func MakeGetThingHandlerFunc(ts common.ThingService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v := mux.Vars(r)
 		id, ok := v["id"]
@@ -92,7 +93,7 @@ func MakeGetThingHandlerFunc(ts ThingService) http.HandlerFunc {
 	}
 }
 
-func MakeCreateThingHandler(ts ThingService) http.HandlerFunc {
+func MakeCreateThingHandler(ts common.ThingService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
@@ -121,7 +122,7 @@ func MakeCreateThingHandler(ts ThingService) http.HandlerFunc {
 	}
 }
 
-func MakeUpdateThingHandlerFunc(ts ThingService) http.HandlerFunc {
+func MakeUpdateThingHandlerFunc(ts common.ThingService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v := mux.Vars(r)
 		id, ok := v["id"]
@@ -163,7 +164,7 @@ func MakeUpdateThingHandlerFunc(ts ThingService) http.HandlerFunc {
 	}
 }
 
-func MakeCheckCommandHandler(ts ThingService) http.HandlerFunc {
+func MakeCheckCommandHandler(ts common.ThingService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v := mux.Vars(r)
 		cid, ok := v["id"]
@@ -198,7 +199,7 @@ func WriteError(w http.ResponseWriter, c int, err error) {
 	}
 }
 
-func WriteThing(w http.ResponseWriter, t *Thing) {
+func WriteThing(w http.ResponseWriter, t *common.Thing) {
 	w.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(ViewThing(t))
 	if err != nil {
@@ -206,7 +207,7 @@ func WriteThing(w http.ResponseWriter, t *Thing) {
 	}
 }
 
-func WriteThings(w http.ResponseWriter, ts []*Thing) {
+func WriteThings(w http.ResponseWriter, ts []*common.Thing) {
 	tvs := make([]*ThingView, len(ts))
 	for i, t := range ts {
 		tvs[i] = ViewThing(t)

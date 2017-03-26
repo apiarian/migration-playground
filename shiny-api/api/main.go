@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apiarian/migration-playground/shiny-api/common"
 	"github.com/gorilla/mux"
 )
 
@@ -39,11 +40,13 @@ func init() {
 func main() {
 	flag.Parse()
 
-	kc, err := NewKafkaClient(strings.Split(brokers, ","), command_topic)
+	kc, err := common.NewKafkaClient(strings.Split(brokers, ","), command_topic)
 	if err != nil {
 		log.Fatal("failed to create kafka client: ", err)
 	}
 	defer kc.Close()
+
+	log.Print("commands are on ", command_topic)
 
 	ts := NewStreamThings(kc)
 
