@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -38,4 +40,19 @@ func main() {
 	defer kc.Close()
 
 	log.Print("working with commands on ", command_topic)
+
+	u := NewUpdater(kc, command_topic)
+	defer u.Close()
+
+	err = u.DoYourThing()
+	if err != nil {
+		log.Fatal("failed to start the updater: ", err)
+	}
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+
+	<-signals
+
+	log.Println("closing")
 }

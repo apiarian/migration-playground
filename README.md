@@ -131,3 +131,11 @@ Error responses have the following schema:
 Error responses have non-200 HTTP status codes.
 
 `application/json` in, `application/json` out.
+
+
+## Running Everything
+
+Run the Original API, Shiny API, and Updater all coordinated with the right
+topic names using `./run-apis.sh`.
+
+**NOTE:** the script is rather aggressive.

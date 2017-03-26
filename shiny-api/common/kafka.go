@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -66,10 +67,11 @@ func (te *ThingCommandEntry) Encode() ([]byte, error) {
 }
 
 type KafkaClient struct {
-	client        sarama.Client
-	producer      sarama.SyncProducer
-	consumer      sarama.Consumer
-	command_topic string
+	client             sarama.Client
+	producer           sarama.SyncProducer
+	consumers          []sarama.Consumer
+	partitionConsumers []sarama.PartitionConsumer
+	command_topic      string
 }
 
 func NewKafkaClient(brokers []string, topic string) (*KafkaClient, error) {
@@ -89,23 +91,19 @@ func NewKafkaClient(brokers []string, topic string) (*KafkaClient, error) {
 		return nil, err
 	}
 
-	consumer, err := sarama.NewConsumerFromClient(client)
-	if err != nil {
-		producer.Close()
-		client.Close()
-		return nil, err
-	}
-
 	return &KafkaClient{
-		client:        client,
-		producer:      producer,
-		consumer:      consumer,
-		command_topic: topic,
+		client:             client,
+		producer:           producer,
+		consumers:          make([]sarama.Consumer, 0),
+		partitionConsumers: make([]sarama.PartitionConsumer, 0),
+		command_topic:      topic,
 	}, nil
 }
 
 func (c *KafkaClient) Close() error {
-	c.consumer.Close()
+	for _, x := range c.consumers {
+		x.Close()
+	}
 	c.producer.Close()
 	return c.client.Close()
 }
@@ -147,4 +145,93 @@ func (c *KafkaClient) PublishThingCommand(t *Thing, typ string) (string, error) 
 	}
 
 	return cid, err
+}
+
+func (c *KafkaClient) RegisterMessageProcessor(
+	topic string,
+	timeout time.Duration,
+	done <-chan struct{},
+	processor func(*sarama.ConsumerMessage),
+) error {
+	limit := time.Now().Add(timeout)
+
+SearchLoop:
+	for {
+		err := c.client.RefreshMetadata()
+		if err != nil {
+			return err
+		}
+
+		ts, err := c.client.Topics()
+		if err != nil {
+			return err
+		}
+
+		for _, t := range ts {
+			if t == topic {
+				break SearchLoop
+			}
+		}
+
+		if time.Now().After(limit) {
+			return errors.New("topic not found before timeout")
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	cons, err := sarama.NewConsumerFromClient(c.client)
+	if err != nil {
+		return err
+	}
+
+	c.consumers = append(c.consumers, cons)
+
+	ps, err := cons.Partitions(topic)
+	if err != nil {
+		return err
+	}
+
+	for _, part := range ps {
+		pcons, err := cons.ConsumePartition(topic, part, sarama.OffsetOldest)
+		if err != nil {
+			return err
+		}
+
+		c.partitionConsumers = append(c.partitionConsumers, pcons)
+
+		go func(p sarama.PartitionConsumer) {
+			for {
+				select {
+				case msg := <-p.Messages():
+					processor(msg)
+
+				case <-done:
+					return
+				}
+			}
+		}(pcons)
+	}
+
+	return nil
+}
+
+func WrapThingCommandEntryProcessor(
+	processor func(*ThingCommandEntry, error),
+) func(*sarama.ConsumerMessage) {
+	return func(m *sarama.ConsumerMessage) {
+		log.Printf(
+			"unwrapping message %s|%d|%d:%s (%s): %s\n",
+			m.Topic,
+			m.Partition,
+			m.Offset,
+			m.Key,
+			m.Timestamp,
+			m.Value,
+		)
+
+		var tce *ThingCommandEntry
+		err := json.Unmarshal(m.Value, &tce)
+		processor(tce, err)
+	}
 }
