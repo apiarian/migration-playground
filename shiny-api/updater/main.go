@@ -41,7 +41,12 @@ func main() {
 
 	log.Print("working with commands on ", command_topic)
 
-	u := NewUpdater(kc, command_topic)
+	u := NewUpdater(
+		kc,
+		command_topic,
+		true,
+		0,
+	)
 	defer u.Close()
 
 	err = u.DoYourThing()

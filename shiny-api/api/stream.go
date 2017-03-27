@@ -49,7 +49,7 @@ func (st *StreamThings) CreateThing(name string, foo float64) (*common.Thing, er
 	}
 
 	now := time.Now()
-	cid, err := st.kc.PublishThingCommand(&common.Thing{
+	cid, err := st.kc.PublishThingRequestCommand(&common.Thing{
 		ID:        "",
 		Name:      name,
 		Foo:       foo,

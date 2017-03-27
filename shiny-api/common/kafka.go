@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -66,6 +67,21 @@ func (te *ThingCommandEntry) Encode() ([]byte, error) {
 	return te.encoded, te.err
 }
 
+func (te *ThingCommandEntry) String() string {
+	if te == nil {
+		return "nil"
+	}
+
+	return fmt.Sprintf(
+		"cid:'%s' type:%s request:%+v success:%+v failure:%+v",
+		te.CID,
+		te.Type,
+		te.Request,
+		te.Success,
+		te.Failure,
+	)
+}
+
 type KafkaClient struct {
 	client             sarama.Client
 	producer           sarama.SyncProducer
@@ -108,7 +124,20 @@ func (c *KafkaClient) Close() error {
 	return c.client.Close()
 }
 
-func (c *KafkaClient) PublishThingCommand(t *Thing, typ string) (string, error) {
+func (c *KafkaClient) actuallySendMessage(cid string, tce *ThingCommandEntry) error {
+	partition, offset, err := c.producer.SendMessage(&sarama.ProducerMessage{
+		Topic: c.command_topic,
+		Key:   sarama.StringEncoder(cid),
+		Value: tce,
+	})
+	if err == nil {
+		log.Printf("published thing (%s) at %s|%d|%d:%s", tce, c.command_topic, partition, offset, cid)
+	}
+
+	return err
+}
+
+func (c *KafkaClient) PublishThingRequestCommand(t *Thing, typ string) (string, error) {
 	b := make([]byte, 32)
 	n, err := rand.Read(b)
 	if n != len(b) || err != nil {
@@ -135,16 +164,49 @@ func (c *KafkaClient) PublishThingCommand(t *Thing, typ string) (string, error) 
 		return "", tce.err
 	}
 
-	partition, offset, err := c.producer.SendMessage(&sarama.ProducerMessage{
-		Topic: c.command_topic,
-		Key:   sarama.StringEncoder("command-id"),
-		Value: tce,
-	})
-	if err == nil {
-		log.Printf("published thing (%+v) at %s|%d|%d:%s", tce, c.command_topic, partition, offset, cid)
+	return cid, c.actuallySendMessage(cid, tce)
+}
+
+func (c *KafkaClient) PublishThingSuccessCommand(cid string, t *Thing, typ string) error {
+	tce := &ThingCommandEntry{
+		CID:     cid,
+		Type:    typ,
+		Request: nil,
+		Success: &SuccessPayload{
+			ID:        t.ID,
+			Name:      t.Name,
+			Foo:       t.Foo,
+			CreatedOn: t.CreatedOn,
+			UpdatedOn: t.UpdatedOn,
+			Version:   t.Version,
+		},
+		Failure: nil,
+	}
+	tce.ensureEncoded()
+	if tce.err != nil {
+		return tce.err
 	}
 
-	return cid, err
+	return c.actuallySendMessage(cid, tce)
+}
+
+func (c *KafkaClient) PublishThingErrorCommand(cid string, code int, message, typ string) error {
+	tce := &ThingCommandEntry{
+		CID:     cid,
+		Type:    typ,
+		Request: nil,
+		Success: nil,
+		Failure: &ErrorPayload{
+			Code:    code,
+			Message: message,
+		},
+	}
+	tce.ensureEncoded()
+	if tce.err != nil {
+		return tce.err
+	}
+
+	return c.actuallySendMessage(cid, tce)
 }
 
 func (c *KafkaClient) RegisterMessageProcessor(
