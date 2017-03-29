@@ -1,20 +1,22 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
 	"time"
 
-	"github.com/apiarian/migration-playground/shiny-api/common"
 	"github.com/gorilla/mux"
 )
 
 var address string
 var brokers string
-var command_topic string
+var new_topic string
 
 func init() {
 	flag.StringVar(
@@ -30,25 +32,28 @@ func init() {
 		"addresses of the kafka brokers to talk to",
 	)
 	flag.StringVar(
-		&command_topic,
-		"command-topic",
+		&new_topic,
+		"new-topic",
 		fmt.Sprintf("thing-commands-%d", time.Now().Unix()),
-		"the command topic for coordinating thing creation and updates",
+		"the topic for tracking things for the shiny api",
 	)
 }
 
 func main() {
 	flag.Parse()
 
-	kc, err := common.NewKafkaClient(strings.Split(brokers, ","), command_topic)
+	kc, err := NewKafkaClient(strings.Split(brokers, ","), new_topic)
 	if err != nil {
 		log.Fatal("failed to create kafka client: ", err)
 	}
 	defer kc.Close()
 
-	log.Print("commands are on ", command_topic)
+	log.Print("commands are on ", new_topic)
 
-	ts := NewStreamThings(kc)
+	u := NewUpdater(kc, new_topic, true)
+	errs := u.Start()
+
+	ts := NewStreamThings(kc, u)
 
 	r := mux.NewRouter()
 
@@ -63,5 +68,36 @@ func main() {
 	http.Handle("/", r)
 
 	log.Print("listening on ", address)
-	log.Fatal(http.ListenAndServe(address, nil))
+	s := &http.Server{
+		Addr:    address,
+		Handler: http.DefaultServeMux,
+	}
+	d := make(chan struct{})
+	go func(s *http.Server, d chan<- struct{}) {
+		log.Print("server l&s error: ", s.ListenAndServe())
+		d <- struct{}{}
+	}(s, d)
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+
+	select {
+	case <-signals:
+		log.Print("got an interrupt")
+
+	case err := <-errs:
+		log.Print("updater start error: ", err)
+	}
+
+	err = s.Shutdown(context.Background())
+	if err != nil {
+		log.Print("server shutdown error: ", err)
+	} else {
+		log.Print("server shut down cleanly")
+	}
+
+	<-d
+	log.Print("server goroutine finished")
+
+	log.Print("really done now.")
 }

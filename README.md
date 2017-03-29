@@ -1,7 +1,10 @@
 # Migration Playground
 
 A place to run experiments on migrating from one API backend to another using
-Kafka topics to choreograph the multi-master dance.
+Kafka topics to choreograph the multi-master dance. Except we don't really have
+a multi-master dance. Since there's no way to merge changes between systems (the
+update operations are actually compare-and-set), we can just proxy requests to
+the current official master system internally.
 
 
 ## Local Kafka
@@ -87,9 +90,8 @@ and deals with any data coordination that may be required with the Original API.
 ### Running the Shiny API
 
 The API command can be launched by executing `go run shiny-api/api/*.go`. The
-Updater command can be launched by executing `go run shiny-api/updater/*.go`.
 
-See the respective `-help` output for command-line arguments.
+See the `-help` output for command-line arguments.
 
 **NOTE:** Kafka needs to be available for the API to function.
 
