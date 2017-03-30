@@ -78,7 +78,12 @@ func (st *StreamThings) Start() <-chan error {
 }
 
 func (st *StreamThings) HandleThingFromMessage(t *Thing) error {
-	return errors.New("stream message handler not implemented")
+	st.mux.Lock()
+	defer st.mux.Unlock()
+
+	st.thingCache[t.ID] = t.Clone()
+
+	return nil
 }
 
 type codedError struct {

@@ -14,13 +14,13 @@ import (
 )
 
 type Updater struct {
-	kc          *KafkaClient
-	new_topic   string
-	done        chan struct{}
-	ownsThings  bool
-	nextID      int
-	mux         *sync.Mutex
-	entityCache map[string]*Thing
+	kc         *KafkaClient
+	new_topic  string
+	done       chan struct{}
+	ownsThings bool
+	nextID     int
+	mux        *sync.Mutex
+	thingCache map[string]*Thing
 }
 
 func NewUpdater(
@@ -29,12 +29,12 @@ func NewUpdater(
 	ownsThings bool,
 ) *Updater {
 	return &Updater{
-		kc:          kc,
-		new_topic:   new_topic,
-		ownsThings:  ownsThings,
-		nextID:      0,
-		mux:         &sync.Mutex{},
-		entityCache: make(map[string]*Thing),
+		kc:         kc,
+		new_topic:  new_topic,
+		ownsThings: ownsThings,
+		nextID:     0,
+		mux:        &sync.Mutex{},
+		thingCache: make(map[string]*Thing),
 	}
 }
 
@@ -86,7 +86,30 @@ func (u *Updater) Start() <-chan error {
 }
 
 func (u *Updater) HandleThingFromMessage(t *Thing) error {
-	return errors.New("updater message handler not implmeneted")
+	u.mux.Lock()
+	defer u.mux.Unlock()
+
+	if x, exists := u.thingCache[t.ID]; exists {
+		tv, err := strconv.Atoi(t.Version)
+		if err != nil {
+			return err
+		}
+
+		xv, err := strconv.Atoi(x.Version)
+		if err != nil {
+			return err
+		}
+
+		if xv >= tv {
+			// the thing we have is already equal or newer than the thing in the
+			// message
+			return nil
+		}
+	}
+
+	u.thingCache[t.ID] = t.Clone()
+
+	return nil
 }
 
 func (u *Updater) CreateThing(name string, foo float64) (*Thing, error) {
@@ -106,7 +129,7 @@ func (u *Updater) CreateThing(name string, foo float64) (*Thing, error) {
 			Version:   "0",
 		}
 
-		_, exists := u.entityCache[t.ID]
+		_, exists := u.thingCache[t.ID]
 		if exists {
 			return nil, errors.Errorf("a thing with id %s already exists", t.ID)
 		}
@@ -122,7 +145,7 @@ func (u *Updater) CreateThing(name string, foo float64) (*Thing, error) {
 		return nil, err
 	}
 
-	u.entityCache[t.ID] = t.Clone()
+	u.thingCache[t.ID] = t.Clone()
 
 	return t, nil
 }
@@ -135,7 +158,7 @@ func (u *Updater) UpdateThing(id, version, name string, foo float64) (*Thing, er
 
 	if u.ownsThings {
 		var exists bool
-		t, exists = u.entityCache[id]
+		t, exists = u.thingCache[id]
 		if !exists {
 			return nil, NewCodedError(errors.Errorf("no Thing with id %s", id), http.StatusNotFound)
 		}
@@ -157,8 +180,12 @@ func (u *Updater) UpdateThing(id, version, name string, foo float64) (*Thing, er
 		}
 
 		if changed {
-			v, _ := strconv.Atoi(t.Version)
+			v, err := strconv.Atoi(t.Version)
+			if err != nil {
+				return nil, err
+			}
 			t.Version = strconv.Itoa(v + 1)
+			t.UpdatedOn = time.Now()
 		}
 
 	} else {
@@ -170,7 +197,7 @@ func (u *Updater) UpdateThing(id, version, name string, foo float64) (*Thing, er
 		return nil, err
 	}
 
-	u.entityCache[t.ID] = t.Clone()
+	u.thingCache[t.ID] = t.Clone()
 
 	return t, nil
 }
