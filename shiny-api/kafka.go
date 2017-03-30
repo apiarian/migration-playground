@@ -2,16 +2,55 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/pkg/errors"
 )
 
-const (
-	CreateCommandType string = "create"
-	UpdateCommandType string = "update"
-)
+type ThingEntry struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Foo       float64   `json:"foo"`
+	CreatedOn time.Time `json:"created_on"`
+	UpdatedOn time.Time `json:"updated_on"`
+	Version   string    `json"version"`
+
+	encoded []byte
+	err     error
+}
+
+func (te *ThingEntry) ensureEncoded() {
+	if te.encoded == nil && te.err == nil {
+		te.encoded, te.err = json.Marshal(te)
+	}
+}
+
+func (te *ThingEntry) Length() int {
+	te.ensureEncoded()
+	return len(te.encoded)
+}
+
+func (te *ThingEntry) Encode() ([]byte, error) {
+	te.ensureEncoded()
+	return te.encoded, te.err
+}
+
+func EntryFromThing(t *Thing) (*ThingEntry, error) {
+	te := &ThingEntry{
+		ID:        t.ID,
+		Name:      t.Name,
+		Foo:       t.Foo,
+		CreatedOn: t.CreatedOn,
+		UpdatedOn: t.UpdatedOn,
+		Version:   t.Version,
+	}
+	te.ensureEncoded()
+
+	return te, te.err
+}
 
 type KafkaClient struct {
 	client             sarama.Client
@@ -122,4 +161,41 @@ SearchLoop:
 	}
 
 	return nil
+}
+
+func (c *KafkaClient) PublishThing(t *Thing) error {
+	te, err := EntryFromThing(t)
+	if err != nil {
+		return err
+	}
+
+	partition, offset, err := c.producer.SendMessage(&sarama.ProducerMessage{
+		Topic: c.new_topic,
+		Key:   sarama.StringEncoder(te.ID),
+		Value: te,
+	})
+	if err != nil {
+		return err
+	}
+
+	log.Printf("published thing %+v at %s|%d|%d", t, c.new_topic, partition, offset)
+
+	return nil
+}
+
+func ExtractThingFromMessage(m *sarama.ConsumerMessage) (*Thing, error) {
+	var te *ThingEntry
+	err := json.Unmarshal(m.Value, &te)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Thing{
+		ID:        te.ID,
+		Name:      te.Name,
+		Foo:       te.Foo,
+		CreatedOn: te.CreatedOn,
+		UpdatedOn: te.UpdatedOn,
+		Version:   te.Version,
+	}, nil
 }

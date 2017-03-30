@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
+	"github.com/Shopify/sarama"
 	"github.com/pkg/errors"
 )
 
@@ -13,15 +17,68 @@ type StreamThings struct {
 	u          *Updater
 	thingCache map[string]*Thing
 	mux        *sync.Mutex
+	topic      string
 }
 
-func NewStreamThings(kc *KafkaClient, u *Updater) *StreamThings {
+func NewStreamThings(kc *KafkaClient, u *Updater, topic string) *StreamThings {
 	return &StreamThings{
 		kc:         kc,
 		thingCache: make(map[string]*Thing),
 		mux:        &sync.Mutex{},
 		u:          u,
+		topic:      topic,
 	}
+}
+
+func (st *StreamThings) Start() <-chan error {
+	errs := make(chan error)
+
+	messages := make(chan *sarama.ConsumerMessage)
+
+	go func(c <-chan *sarama.ConsumerMessage) {
+		for cm := range c {
+			t, err := ExtractThingFromMessage(cm)
+			if err != nil {
+				log.Printf(
+					"trouble with message %s|%d|%d:%s (%s): %s: %v",
+					cm.Topic,
+					cm.Partition,
+					cm.Offset,
+					cm.Key,
+					cm.Timestamp,
+					cm.Value,
+					err,
+				)
+				continue
+			}
+
+			err = st.HandleThingFromMessage(t)
+			if err != nil {
+				log.Printf("error handling thing %+v: %s", t, err)
+			}
+		}
+	}(messages)
+
+	go func() {
+		err := st.kc.RegisterMessageProcessor(
+			context.Background(),
+			st.topic,
+			5*time.Minute,
+			messages,
+		)
+
+		if err != nil {
+			errs <- err
+		} else {
+			log.Printf("stream message processor registered")
+		}
+	}()
+
+	return errs
+}
+
+func (st *StreamThings) HandleThingFromMessage(t *Thing) error {
+	return errors.New("stream message handler not implemented")
 }
 
 type codedError struct {
@@ -56,7 +113,7 @@ func (st *StreamThings) CreateThing(name string, foo float64) (*Thing, error) {
 
 	st.mux.Lock()
 	defer st.mux.Unlock()
-	st.thingCache[t.ID] = t
+	st.thingCache[t.ID] = t.Clone()
 
 	return t, nil
 }
@@ -69,7 +126,7 @@ func (st *StreamThings) UpdateThing(id, version, name string, foo float64) (*Thi
 
 	st.mux.Lock()
 	defer st.mux.Unlock()
-	st.thingCache[t.ID] = t
+	st.thingCache[t.ID] = t.Clone()
 
 	return t, nil
 }
@@ -83,7 +140,7 @@ func (st *StreamThings) GetThing(id string) (*Thing, error) {
 		return nil, NewCodedError(errors.Errorf("no Thing with id %s", id), http.StatusNotFound)
 	}
 
-	return t, nil
+	return t.Clone(), nil
 }
 
 func (st *StreamThings) ListThings() ([]*Thing, error) {
@@ -92,7 +149,7 @@ func (st *StreamThings) ListThings() ([]*Thing, error) {
 
 	var ts []*Thing
 	for _, t := range st.thingCache {
-		ts = append(ts, t)
+		ts = append(ts, t.Clone())
 	}
 
 	sort.Slice(ts, func(i, j int) bool { return ts[i].ID < ts[j].ID })

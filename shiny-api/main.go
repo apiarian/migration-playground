@@ -51,9 +51,10 @@ func main() {
 	log.Print("commands are on ", new_topic)
 
 	u := NewUpdater(kc, new_topic, true)
-	errs := u.Start()
+	uErrs := u.Start()
 
-	ts := NewStreamThings(kc, u)
+	ts := NewStreamThings(kc, u, new_topic)
+	sErrs := ts.Start()
 
 	r := mux.NewRouter()
 
@@ -85,8 +86,11 @@ func main() {
 	case <-signals:
 		log.Print("got an interrupt")
 
-	case err := <-errs:
+	case err := <-uErrs:
 		log.Print("updater start error: ", err)
+
+	case err := <-sErrs:
+		log.Print("thing stream start error: ", err)
 	}
 
 	err = s.Shutdown(context.Background())

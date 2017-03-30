@@ -1,11 +1,15 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
+
+	"github.com/Shopify/sarama"
 	"github.com/pkg/errors"
 )
 
@@ -37,7 +41,52 @@ func NewUpdater(
 func (u *Updater) Start() <-chan error {
 	errs := make(chan error)
 
+	messages := make(chan *sarama.ConsumerMessage)
+
+	go func(c <-chan *sarama.ConsumerMessage) {
+		for cm := range c {
+			t, err := ExtractThingFromMessage(cm)
+			if err != nil {
+				log.Printf(
+					"trouble with message %s|%d|%d:%s (%s): %s: %v",
+					cm.Topic,
+					cm.Partition,
+					cm.Offset,
+					cm.Key,
+					cm.Timestamp,
+					cm.Value,
+					err,
+				)
+				continue
+			}
+
+			err = u.HandleThingFromMessage(t)
+			if err != nil {
+				log.Printf("error handling thing %+v: %s", t, err)
+			}
+		}
+	}(messages)
+
+	go func() {
+		err := u.kc.RegisterMessageProcessor(
+			context.Background(),
+			u.new_topic,
+			5*time.Minute,
+			messages,
+		)
+
+		if err != nil {
+			errs <- err
+		} else {
+			log.Printf("updater message processor registered")
+		}
+	}()
+
 	return errs
+}
+
+func (u *Updater) HandleThingFromMessage(t *Thing) error {
+	return errors.New("updater message handler not implmeneted")
 }
 
 func (u *Updater) CreateThing(name string, foo float64) (*Thing, error) {
@@ -68,7 +117,12 @@ func (u *Updater) CreateThing(name string, foo float64) (*Thing, error) {
 		return nil, errors.New("not owning Things isn't supported yet")
 	}
 
-	u.entityCache[t.ID] = t
+	err := u.kc.PublishThing(t)
+	if err != nil {
+		return nil, err
+	}
+
+	u.entityCache[t.ID] = t.Clone()
 
 	return t, nil
 }
@@ -111,7 +165,12 @@ func (u *Updater) UpdateThing(id, version, name string, foo float64) (*Thing, er
 		return nil, errors.New("not owning Things isn't supported yet")
 	}
 
-	u.entityCache[t.ID] = t
+	err := u.kc.PublishThing(t)
+	if err != nil {
+		return nil, err
+	}
+
+	u.entityCache[t.ID] = t.Clone()
 
 	return t, nil
 }

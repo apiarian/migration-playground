@@ -20,3 +20,14 @@ type ThingService interface {
 	ListThings() ([]*Thing, error)
 	CheckCommand(cid string) (*Thing, error)
 }
+
+func (t *Thing) Clone() *Thing {
+	return &Thing{
+		ID:        t.ID,
+		Name:      t.Name,
+		Foo:       t.Foo,
+		CreatedOn: t.CreatedOn,
+		UpdatedOn: t.UpdatedOn,
+		Version:   t.Version,
+	}
+}
