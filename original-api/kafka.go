@@ -82,6 +82,7 @@ func NewKafkaClient(brokers []string, topic string) (*KafkaClient, error) {
 }
 
 func (c *KafkaClient) Close() error {
+	c.producer.Close()
 	return c.client.Close()
 }
 
