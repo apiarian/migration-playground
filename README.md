@@ -1,3 +1,15 @@
+# PICKLED
+
+This repository is currently pickled. It's as far along as it will be for a
+while. It was started when I thought that the migration process I was exploring
+needed to be more complicated than it really did. Since the migration process is
+actually fairly straightforward (due to the fact that there isn't a real
+multi-master situation), there doesn't seem to be a need for this toy
+implementation anymore. Maybe it can be revived some day. Or maybe it can serve
+as a repository of code snippets. Anyway, probably won't be many updates here
+for a long while.
+
+
 # Migration Playground
 
 A place to run experiments on migrating from one API backend to another using
