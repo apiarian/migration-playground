@@ -9,6 +9,9 @@ implementation anymore. Maybe it can be revived some day. Or maybe it can serve
 as a repository of code snippets. Anyway, probably won't be many updates here
 for a long while.
 
+This branch is even more salty than the master branch, since it has a bunch of
+unfinished work on bolt storage.
+
 
 # Migration Playground
 
